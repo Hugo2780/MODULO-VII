@@ -1,0 +1,314 @@
+---
+title: "Modulo VII"
+author: "Hugo Donoso Reinoso"
+date: "2024-09-11"
+output: github_document
+gfm:
+    always_allow_html: true
+knitr:
+  opts_chunk: 
+    screenshot.force: TRUE
+---
+
+```{r setup, include=FALSE}
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+install.packages("readxl")
+install.packages("openxlsx")
+install.packages("TSstudio")
+install.packages("urca")
+install.packages("tseries")
+install.packages("TSstudio")
+install.packages("lmtest")
+install.packages("highcharter")
+install.packages("stargazer")
+install.packages("forecast")
+install.packages("webshot")
+library(webshot)
+webshot::install_phantomjs()
+
+library(forecast)
+library(stargazer)
+
+library(highcharter)
+library(lmtest)
+library(TSstudio)
+library(tseries)
+library(urca)
+library(TSstudio)
+library(openxlsx)
+library(readxl)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+data <- read_xlsx("E:\\Betametrica\\MODULO VII\\base.xlsx")
+View(data)
+```
+
+
+CONVERTIR UNA SERIE TEMPORAL
+```{r}
+fbkf <- ts(data[,2], start = c(2000, 1), end = c(2024, 1), freq = 4)
+fbkf
+```
+
+
+CONVERSIÓN DE SERIES DE TIEMPO EN LOGARITMOS - TASAS DE CRECIMIENTO
+
+  Generar los logaritmos de las series
+```{r}
+lfbkf <- log(fbkf)
+lfbkf
+
+
+```
+
+```{r}
+# Grafico de la serie original
+plot(fbkf, main="Formación bruta de capital fijo", ylab="miles U$ dólares", xlab="Periodo")
+
+# Grafico de la serie en logaritmos
+plot(lfbkf, main="Logaritmo de Formación Bruta de Capital fijo", ylab="miles U$ dólares", xlab="Periodo")
+```
+
+
+Se aplica a la serie de la variable Formación Bruta de Capital Fijo, lo logaritmos
+con el propósito de suavizar los resultados que se expresan en la gráfica con disminuyento
+las variaciones a partir del año 2015.  El modelo ARIMA exige que debe haber criterios 
+de estacionalidad, y los logaritmos permiten este lograr este aspecto.
+
+
+
+
+Generar los rezagos interanuales
+```{r}
+
+lfbkflag4 = stats::lag(lfbkf, -4)
+lfbkflag4
+
+fbkflag4 = stats::lag(fbkf, -4)
+fbkflag4
+
+```
+
+Generar las tasas de crecimiento interanual
+
+```{r}
+
+tclfbkf4 <- (lfbkf - lfbkflag4) * 100
+tclfbkf4
+
+tcfbkf4 <- (fbkf / fbkflag4 - 1) * 100
+tcfbkf4
+```
+
+ EXPORTAR LA DATA-
+```{r}
+datafinal <- cbind(fbkf, fbkflag4, tcfbkf4, lfbkf, tclfbkf4)
+datafinal
+
+muestra1<-window(datafinal, start=c(2000,1), end=c(2024,1))
+muestra1
+
+
+```
+
+
+
+DIFERENCIAS-----------------------------------------------------------
+
+
+```{r}
+
+#.........Primera diferencia----------------------------------
+
+dtcltfbkf <- diff(tclfbkf4)
+dfbkf <- diff(fbkf)
+dlfbkf <- diff(lfbkf)
+dtclfbkf4 <- diff(tclfbkf4)
+
+```
+
+
+GRAFICOS--------------------------------------------------------------
+
+```{r}
+ 
+grafico1<-plot(dlfbkf)
+
+
+grafico2<-plot(dlfbkf)
+
+# La gráfica en logarítmo en primera diferencia expresa que la formación bruta de 
+# capital fijo guarda estacionaridad, por los que los valores de la prueba ADF es
+# superior a los puntos crìtcos al 1%
+
+```
+DESCOMPOSICIÓN DE LA SERIE----------------------
+
+```{r}
+
+  ts_decompose(dlfbkf)
+  # Al lograr la estacionaridad, la gráfica expresa la existencia de tendencia.
+  
+
+```
+
+ ESTACIONARIEDAD DE LAS SERIES-----
+```{r}
+
+
+#---------Test Augmented Dickey-Fuller---------
+## sin constante ni tendencia
+
+adf1_ltp<-summary(ur.df(dlfbkf, lags=4))
+adf1_ltp
+
+
+#constante
+adf2_ltp<-summary(ur.df(dlfbkf, type="drift", lags=3))
+adf2_ltp
+
+
+##constante y tendencia
+adf3_ltp<-summary(ur.df(dlfbkf, type="trend", lags=3))
+adf3_ltp
+
+
+# Se calcula la prueba ADF con el propósito de determinar en qué nivel hay estacionaridad en la serie
+# se logra determinar que en primera diferencia logarítimica de la variable formación bruta de capital fijo
+# hay estacionaridad.  De esta forma se logra uno de los requisitos del modelo ARIMA para conseguir 
+# adecuados pronósticos
+
+
+
+
+```
+
+DISEÑO DE LA MUESTRA
+```{r}
+
+
+
+estacionaria<-cbind (dlfbkf)
+estacionaria
+
+
+muestra_end<-window(estacionaria, start=c(2000,2), end=c(2024,1))
+muestra_end
+
+
+```
+
+
+IDENTIFICACÓN p, q
+```{r}
+ts_cor(muestra_end)
+
+ts_cor(muestra_end, lag=22)
+```
+
+MODELO ARIMA(p,d,q)---
+
+ESTIMACIÓN ARIMA-
+```{r}
+
+arima1<- arima(muestra_end,order=c(3,1,1), method = "ML")
+summary( arima1)
+
+
+#------Mostrar la significancia del pvalue del ARIMA(p,d,q)--------------
+
+coeftest(arima1)
+
+# De acuerdo a la prueba se identifica que hay tes elementos p media móvil debido a que en la gráfica
+# hay tres rayas seguidas en color celeste que superan el límite 
+# Mientras que hay un solo componenete q o autorregresivo.
+
+```
+
+
+
+```{r}
+#EVALUACIÓN DEL ARIMA------------------------------
+
+#------Residuos son ruido blanco---------------------------------
+residuals=resid(arima1)
+
+adf.test(residuals)
+# El valor negativo del ADF -6,56 expresa que hay estacionaridad, por ende se consida prueba superada
+
+# a su vez el p value es igual a 0.01, siendo datos ajustados correctos para un modelo de pronóstico, como
+# es el ARIMA
+
+plot(residuals)
+
+
+
+## sin constante ni tendencia
+
+adf1_ltp<-summary(ur.df(residuals, lags=3))
+adf1_ltp
+
+
+
+#constante
+adf2_ltp<-summary(ur.df(residuals, type="drift", lags=3))
+adf2_ltp
+
+
+##constante y tendencia
+adf3_ltp<-summary(ur.df(residuals, type="trend", lags=3))
+adf3_ltp
+# En cada caso, se supera la prueba ADF
+```
+
+
+
+```{r}
+#------Normalidad de los resiudos--------------------------------
+
+
+jarque.bera.test(residuals(arima1))
+
+# El reslatado es adecuado del test
+autoplot(arima1)
+# el resultaodo es acecuado del test
+
+
+#####--Ljung-Box test----
+
+checkresiduals(arima1)
+# La prueba expresa valores menor al 5% lo cual manifiesta problemas de carácter residual
+# Es necesario mejorar el modelo como trtamiento adicionales a la data
+# como p value es menor a 0.05 no se rechaza la Ho 
+
+
+##9.3.Proyección ARIMA-------------------------------
+
+prediccion1 <- forecast(arima1, h=4)
+summary(prediccion1)
+
+#--9.4.Graficar la proyecci?n---------------------------
+
+
+hchart(prediccion1)
+# Esta parse se observa la proyección o predicciòn en los trimestres futuros
+#---ETAPA 10. RESUMEN DEL ARIMA----------------------------------
+
+
+
+stargazer(arima1, type="text")
+
+
+# El modelo se puede mejorar ya que el MAPE es elevado, por ende las porbabilidades de generar una
+# proyección errada son fuertes.
+
+
+
+
+  
+```
+
